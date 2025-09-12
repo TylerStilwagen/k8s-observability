@@ -1,0 +1,107 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-stack
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+  labels:
+    app.kubernetes.io/name: prometheus-stack
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: infrastructure
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 77.5.0
+    helm:
+      values: |
+        # Ensure CRDs are installed first
+        crds:
+          enabled: true
+
+        # Grafana configuration
+        grafana:
+          enabled: true
+          persistence:
+            enabled: true
+            type: pvc
+            size: 5Gi
+            storageClassName: longhorn
+            accessModes: ["ReadWriteOnce"]
+
+        # Prometheus configuration
+        prometheus:
+          enabled: true
+          prometheusSpec:
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: longhorn
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 5Gi
+
+        # Disable node exporter since k8s-monitoring handles it
+        nodeExporter:
+          enabled: false
+          
+        # AlertManager configuration
+        alertmanager:
+          enabled: true
+          alertmanagerSpec:
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: longhorn
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 1Gi
+
+            config:
+              global:
+                resolve_timeout: 5m
+              route:
+                group_by: ['alertname']
+                group_wait: 10s
+                group_interval: 10s
+                repeat_interval: 1h
+                receiver: 'pagerduty'
+                routes:
+                - match:
+                    severity: critical
+                  receiver: 'pagerduty-critical'
+                  group_wait: 5s
+                  repeat_interval: 30m
+
+              receivers:
+              - name: 'pagerduty-critical'
+                pagerduty_configs:
+                - service_key: '<insert-pagerduty-integration-key>'
+                  description: 'CRITICAL: {{ .GroupLabels.alertname }} - {{ .CommonAnnotations.summary }}'
+                  severity: 'critical'
+                  details:
+                    summary: 'CRITICAL: {{ .CommonAnnotations.summary }}'
+                    description: '{{ .CommonAnnotations.description }}'
+                    severity: 'critical'
+                    cluster: '{{ .CommonLabels.cluster }}'
+                    namespace: '{{ .CommonLabels.namespace }}'
+                    pod: '{{ .CommonLabels.pod }}'
+                    service: '{{ .CommonLabels.service }}'
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipCRDs=false
+      - ServerSideApply=true

@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tempo
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: infrastructure
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: tempo
+    targetRevision: 1.23.3
+    helm:
+      values: |
+        tempo:
+          auth_enabled: false
+          server:
+            http_listen_port: 3200
+          distributor:
+            receivers:
+              otlp:
+                protocols:
+                  grpc:
+                  http:
+          metricsGenerator:
+            enabled: true
+          ingester:
+            max_block_duration: 5m
+          storage:
+            trace:
+              backend: local
+              local:
+                path: /var/tempo/traces
+              pool:
+                max_workers: 100
+                queue_depth: 10000
+        persistence:
+          enabled: true
+          size: 5Gi
+          storageClassName: longhorn
+        service:
+          type: ClusterIP
+          port: 3200
+        serviceMonitor:
+          enabled: true
+        gateway:
+          enabled: true
+          service:
+            type: ClusterIP
+            port: 80
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

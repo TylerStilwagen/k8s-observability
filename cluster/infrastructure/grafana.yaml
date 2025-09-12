@@ -1,0 +1,56 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: infrastructure
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 9.4.4
+    helm:
+      values: |
+        persistence:
+          enabled: true
+          type: pvc
+          size: 5Gi
+          storageClassName: "longhorn"
+
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: Prometheus
+                type: prometheus
+                url: http://prometheus-stack-kube-prom-prometheus.observability:9090/
+                access: proxy
+                isDefault: true
+              - name: Loki
+                type: loki
+                url: http://loki-gateway.observability.svc.cluster.local
+                access: proxy
+                isDefault: false
+              - name: Tempo
+                type: tempo
+                url: http://tempo.observability.svc.cluster.local:3200
+                access: proxy
+                isDefault: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

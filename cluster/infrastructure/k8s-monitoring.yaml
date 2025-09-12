@@ -1,0 +1,103 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8s-monitoring
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+  labels:
+    app.kubernetes.io/name: k8s-monitoring
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: infrastructure
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: k8s-monitoring
+    targetRevision: 3.4.0
+    helm:
+      values: |
+        cluster:
+          name: my-cluster
+        destinations:
+          - name: grafana-cloud-metrics
+            type: prometheus
+            url: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090
+          - name: grafana-cloud-logs
+            type: loki
+            url: http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push
+          - name: grafana-cloud-otlp-endpoint
+            type: otlp
+            url: http://tempo.observability.svc.cluster.local:4318
+            protocol: http
+            tls:
+              insecure: true
+              insecureSkipVerify: true
+            traces:
+              enabled: true
+        clusterMetrics:
+          enabled: true
+        clusterEvents:
+          enabled: true
+        podLogs:
+          enabled: true
+        applicationObservability:
+          enabled: true
+          receivers:
+            otlp:
+              grpc:
+                enabled: true
+                port: 4317
+              http:
+                enabled: true
+                port: 4318
+            zipkin:
+              enabled: true
+              port: 9411
+        integrations:
+          alloy:
+            instances:
+              - name: alloy
+                labelSelectors:
+                  app.kubernetes.io/name:
+                    - alloy-metrics
+                    - alloy-singleton
+                    - alloy-logs
+                    - alloy-receiver
+        alloy-metrics:
+          enabled: true
+        alloy-singleton:
+          enabled: true
+        alloy-logs:
+          enabled: true
+        alloy-receiver:
+          enabled: true
+          alloy:
+            extraPorts:
+              - name: otlp-grpc
+                port: 4317
+                targetPort: 4317
+                protocol: TCP
+              - name: otlp-http
+                port: 4318
+                targetPort: 4318
+                protocol: TCP
+              - name: zipkin
+                port: 9411
+                targetPort: 9411
+                protocol: TCP
+        nodeExporter:
+          enabled: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
