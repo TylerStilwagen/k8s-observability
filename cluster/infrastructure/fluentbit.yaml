@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluent-bit
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/part-of: observability-stack
+    app.kubernetes.io/component: infrastructure
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://fluent.github.io/helm-charts
+    chart: fluent-bit
+    targetRevision: 0.53.0
+    helm:
+      values: |
+        config:
+          customParsers: |
+            [PARSER]
+                Name docker_no_time
+                Format json
+                Time_Keep Off
+                Time_Key time
+                Time_Format %Y-%m-%dT%H:%M:%S.%L
+          extraFiles: {}
+          filters: |
+            [FILTER]
+                Name kubernetes
+                Match kube.*
+                Merge_Log On
+                Keep_Log Off
+                K8S-Logging.Parser On
+                K8S-Logging.Exclude On
+          inputs: |
+            [INPUT]
+                Name tail
+                Path /var/log/containers/*.log
+                multiline.parser docker, cri
+                Tag kube.*
+                Mem_Buf_Limit 5MB
+                Skip_Long_Lines On
+
+            # [INPUT]
+            #     Name systemd
+            #     Tag host.*
+            #     Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+            #     Read_From_Tail On
+          outputs: |
+            [OUTPUT]
+                Name loki
+                Match kube.*
+                Host loki-write.observability
+                Port 3100
+                auto_kubernetes_labels true
+                Retry_Limit False
+
+            # [OUTPUT]
+            #     Name loki
+            #     Match host.*
+            #     Host loki-write.observability
+            #     Port 3100
+            #     Retry_Limit False
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -6,8 +6,9 @@ resources:
   - infrastructure/prometheus-stack.yaml
   - infrastructure/loki.yaml
   - infrastructure/tempo.yaml
+  - infrastructure/fluentbit.yaml
   #- infrastructure/grafana.yaml
-  - infrastructure/k8s-monitoring.yaml
+  #- infrastructure/k8s-monitoring.yaml
   
   # Application workloads (deployed after infrastructure)
   - applications/mythical-beasts.yaml
