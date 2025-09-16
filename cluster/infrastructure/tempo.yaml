@@ -25,11 +25,11 @@ spec:
             remoteWriteUrl: "http://prometheus-stack-kube-prom-prometheus.observability:9090/api/v1/write"
           overrides:
             defaults:
-            metrics_generator:
-              processors:
-                - service-graphs
-                - span-metrics
-                - local-blocks
+              metrics_generator:
+                processors:
+                  - service-graphs
+                  - span-metrics
+                  - local-blocks
   destination:
     server: https://kubernetes.default.svc
     namespace: observability
